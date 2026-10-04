@@ -27,6 +27,7 @@
 #include "hud/spectator.h"
 
 #include "vgui/client_viewport.h"
+#include "ir/ir_consumer.h"
 
 extern int g_iAlive;
 
@@ -734,6 +735,8 @@ void CL_DLLEXPORT CL_CreateMove(float frametime, struct usercmd_s *cmd, int acti
 	Vector viewangles;
 	static Vector oldangles;
 
+	ir_consumer::PreCreateMove(active);
+
 	if (active)
 	{
 		//memset( viewangles, 0, sizeof( Vector ) );
@@ -828,6 +831,9 @@ void CL_DLLEXPORT CL_CreateMove(float frametime, struct usercmd_s *cmd, int acti
 			cmd->buttons |= IN_BACK;
 		}
 	}
+
+	// IR Bot: during takeover, replace the command with the received control
+	ir_consumer::CreateMove(cmd, active);
 
 	gEngfuncs.GetViewAngles((float *)viewangles);
 	// Set current view angles.

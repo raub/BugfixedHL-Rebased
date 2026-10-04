@@ -44,6 +44,7 @@
 #include "opengl.h"
 #include "engfuncs.h"
 #include "engine_builds.h"
+#include "ir/ir_consumer.h"
 
 CHud gHUD;
 
@@ -383,6 +384,7 @@ void CL_DLLEXPORT HUD_Frame(double time)
 	EngFuncs_UpdateHooks();
 	gHUD.Frame(time);
 	GetClientVoiceMgr()->Frame(time);
+	ir_consumer::Frame();
 }
 
 /*
@@ -436,6 +438,7 @@ void CL_DLLEXPORT HUD_Shutdown(void)
 	//	RecClShutdown();
 
 	console::HudShutdown();
+	ir_consumer::Shutdown();
 	gHUD.Shutdown();
 	ShutdownInput();
 	CL_UnloadParticleMan();
