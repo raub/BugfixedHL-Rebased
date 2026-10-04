@@ -303,9 +303,27 @@ if( USE_UPDATER )
 	endif()
 endif()
 
+# IR Bot (https://github.com/raub/ir-bot): hl-cl-consumer. Its protocol code is in ir-bot's
+# hl/common, next to this repository when it is checked out as ir-bot's submodule.
+set( SOURCE_FILES
+	${SOURCE_FILES}
+	ir/ir_consumer.cpp
+	ir/ir_consumer.h
+)
+get_filename_component( IRBOT_HL_DIR "${PROJECT_SOURCE_DIR}/.." ABSOLUTE )
+
 source_group( TREE ${PROJECT_SOURCE_DIR} FILES ${SOURCE_FILES} )
 
 add_library( client SHARED ${SOURCE_FILES} )
+
+if( EXISTS "${IRBOT_HL_DIR}/common/control_net.hpp" )
+	message( STATUS "IR Bot: hl-cl-consumer enabled (${IRBOT_HL_DIR}/common)" )
+	target_include_directories( client PRIVATE ${IRBOT_HL_DIR} )
+	target_compile_definitions( client PRIVATE BHL_IRBOT )
+else()
+	message( STATUS "IR Bot: hl/common not found, hl-cl-consumer disabled" )
+	set_source_files_properties( ir/ir_consumer.cpp PROPERTIES HEADER_FILE_ONLY TRUE )
+endif()
 add_auto_deploy( client client PublishPathClient.txt )
 bhl_version_info( client "client.dll" "BugfixedHL-Rebased Client" )
 

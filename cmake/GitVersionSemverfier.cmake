@@ -7,7 +7,11 @@ find_package(Git QUIET)
 if(GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
     # Depend on current commit
     # Forces reconfigure when commit changes
-    set(_git_dir "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+    # In a submodule or worktree .git is a file pointing to the real directory
+    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --absolute-git-dir
+                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                    OUTPUT_VARIABLE _git_dir
+                    OUTPUT_STRIP_TRAILING_WHITESPACE)
 
     file(READ ${_git_dir}/HEAD _git_head)
     string(REGEX MATCH "^ref: (.*)\n$" _git_ref_match ${_git_head})
