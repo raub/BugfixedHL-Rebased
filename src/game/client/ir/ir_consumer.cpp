@@ -17,6 +17,7 @@
 #include "pm_shared.h"
 
 #include "ir_consumer.h"
+#include "ir_producer.h"
 
 // ir-bot's shared headers (hl/common), last because they need the sockets API.
 #ifdef _WIN32
@@ -26,13 +27,27 @@
 #endif
 #include "common/control_net.hpp"
 
-extern playermove_t *pmove;
-
 namespace
 {
 
-ConVar ir_session("ir_session", "", 0, "IR session id of the local player; control channels are accepted for it (empty = hl-cl-consumer off)");
+ConVar ir_session("ir_session", "", 0, "For tests without hl-cl-producer: accept control channels for this session id (empty = the producer's session)");
 ConVar ir_control_port("ir_control_port", "47702", 0, "TCP port hl-cl-consumer listens on (controls arrive on the same UDP port)");
+
+// The session is the agent (ir-control §2.2): controls are accepted for the ingress session
+// hl-cl-producer has open, and only while it is open. `ir_session` names a session by hand
+// instead, for tests that run without the producer or the IR service.
+// SPEC-QUESTION: doc/notes/stream-f-questions.md#ir-session
+int WantedSession()
+{
+	const char *text = ir_session.GetString();
+	if (!text || !text[0])
+		return ir_producer::SessionId();
+	char *end = nullptr;
+	const long value = std::strtol(text, &end, 10);
+	if (end == text || *end != '\0' || value < 0 || value > 65535)
+		return -1;
+	return static_cast<int>(value);
+}
 
 hl::ControlServer s_Server;
 int s_iSession = -1; // session served now, -1 = none
@@ -45,32 +60,6 @@ std::uint32_t NowMs()
 {
 	using namespace std::chrono;
 	return static_cast<std::uint32_t>(duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
-}
-
-// `ir_session` as a session id, or -1 when it is empty or not a number in 0..65535.
-int WantedSession()
-{
-	const char *text = ir_session.GetString();
-	if (!text || !text[0])
-		return -1;
-	char *end = nullptr;
-	const long value = std::strtol(text, &end, 10);
-	if (end == text || *end != '\0' || value < 0 || value > 65535)
-		return -1;
-	return static_cast<int>(value);
-}
-
-// The speed that movement 1.0 stands for: the server's maximum speed (movevars), lowered by
-// the player's own limit when the game sets one. Producers divide by the same value.
-float MaxSpeed()
-{
-	float speed = 270.0f; // the project demos' sv_maxspeed, used until movevars are known
-	if (pmove && pmove->movevars && pmove->movevars->maxspeed > 0)
-		speed = pmove->movevars->maxspeed;
-	const float client = gEngfuncs.GetClientMaxspeed();
-	if (client > 0 && client < speed)
-		speed = client;
-	return speed;
 }
 
 // Weapon ids are the Half-Life SDK ids (hl-producer §7.1). The game selects a weapon by its
@@ -125,9 +114,10 @@ CON_COMMAND(ir_release, "Closes the IR control channel: control returns to keybo
 
 CON_COMMAND(ir_status, "Prints the state of hl-cl-consumer")
 {
+	ir_producer::PrintStatus();
 	if (!s_Server.running())
 	{
-		ConPrintf("ir-control: off (set ir_session to the session id, for example: ir_session 1)\n");
+		ConPrintf("ir-control: off (no ingress session is open; ir_session <id> names one by hand)\n");
 		return;
 	}
 	ConPrintf("ir-control: session %d, listening on 127.0.0.1:%d (TCP), controls on UDP %d, %s\n",
@@ -217,7 +207,8 @@ void ir_consumer::CreateMove(struct usercmd_s *cmd, int active)
 	gEngfuncs.SetViewAngles((float *)angles);
 
 	// Movement (§6.2, §8): normalized movement times the maximum speed.
-	const float maxSpeed = MaxSpeed();
+	// hl-cl-producer divides by the same speed.
+	const float maxSpeed = ir_producer::MaxSpeed();
 	cmd->forwardmove = static_cast<float>(hl::controlMoveToUnit(control.moveForward)) * maxSpeed;
 	cmd->sidemove = static_cast<float>(hl::controlMoveToUnit(control.moveSide)) * maxSpeed;
 	cmd->upmove = 0;

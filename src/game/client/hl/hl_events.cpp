@@ -15,6 +15,7 @@
 #include "../hud.h"
 #include "../cl_util.h"
 #include "event_api.h"
+#include "ir/ir_producer.h"
 
 extern "C"
 {
@@ -55,26 +56,33 @@ Associate script file name with callback functions.  Callback's must be extern "
 That was what we were going to do, but we ran out of time...oh well.
 ======================
 */
+// IR Bot: hl-cl-producer reports other players' weapon events as sounds, so every event is
+// registered through its wrapper.
+static void HookEvent(const char *name, void (*fn)(struct event_args_s *))
+{
+	gEngfuncs.pfnHookEvent(name, ir_producer::WrapEvent(name, fn));
+}
+
 void Game_HookEvents(void)
 {
-	gEngfuncs.pfnHookEvent("events/glock1.sc", EV_FireGlock1);
-	gEngfuncs.pfnHookEvent("events/glock2.sc", EV_FireGlock2);
-	gEngfuncs.pfnHookEvent("events/shotgun1.sc", EV_FireShotGunSingle);
-	gEngfuncs.pfnHookEvent("events/shotgun2.sc", EV_FireShotGunDouble);
-	gEngfuncs.pfnHookEvent("events/mp5.sc", EV_FireMP5);
-	gEngfuncs.pfnHookEvent("events/mp52.sc", EV_FireMP52);
-	gEngfuncs.pfnHookEvent("events/python.sc", EV_FirePython);
-	gEngfuncs.pfnHookEvent("events/gauss.sc", EV_FireGauss);
-	gEngfuncs.pfnHookEvent("events/gaussspin.sc", EV_SpinGauss);
-	gEngfuncs.pfnHookEvent("events/train.sc", EV_TrainPitchAdjust);
-	gEngfuncs.pfnHookEvent("events/vehicle.sc", EV_VehiclePitchAdjust);
-	gEngfuncs.pfnHookEvent("events/crowbar.sc", EV_Crowbar);
-	gEngfuncs.pfnHookEvent("events/crossbow1.sc", EV_FireCrossbow);
-	gEngfuncs.pfnHookEvent("events/crossbow2.sc", EV_FireCrossbow2);
-	gEngfuncs.pfnHookEvent("events/rpg.sc", EV_FireRpg);
-	gEngfuncs.pfnHookEvent("events/egon_fire.sc", EV_EgonFire);
-	gEngfuncs.pfnHookEvent("events/egon_stop.sc", EV_EgonStop);
-	gEngfuncs.pfnHookEvent("events/firehornet.sc", EV_HornetGunFire);
-	gEngfuncs.pfnHookEvent("events/tripfire.sc", EV_TripmineFire);
-	gEngfuncs.pfnHookEvent("events/snarkfire.sc", EV_SnarkFire);
+	HookEvent("events/glock1.sc", EV_FireGlock1);
+	HookEvent("events/glock2.sc", EV_FireGlock2);
+	HookEvent("events/shotgun1.sc", EV_FireShotGunSingle);
+	HookEvent("events/shotgun2.sc", EV_FireShotGunDouble);
+	HookEvent("events/mp5.sc", EV_FireMP5);
+	HookEvent("events/mp52.sc", EV_FireMP52);
+	HookEvent("events/python.sc", EV_FirePython);
+	HookEvent("events/gauss.sc", EV_FireGauss);
+	HookEvent("events/gaussspin.sc", EV_SpinGauss);
+	HookEvent("events/train.sc", EV_TrainPitchAdjust);
+	HookEvent("events/vehicle.sc", EV_VehiclePitchAdjust);
+	HookEvent("events/crowbar.sc", EV_Crowbar);
+	HookEvent("events/crossbow1.sc", EV_FireCrossbow);
+	HookEvent("events/crossbow2.sc", EV_FireCrossbow2);
+	HookEvent("events/rpg.sc", EV_FireRpg);
+	HookEvent("events/egon_fire.sc", EV_EgonFire);
+	HookEvent("events/egon_stop.sc", EV_EgonStop);
+	HookEvent("events/firehornet.sc", EV_HornetGunFire);
+	HookEvent("events/tripfire.sc", EV_TripmineFire);
+	HookEvent("events/snarkfire.sc", EV_SnarkFire);
 }
