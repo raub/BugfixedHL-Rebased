@@ -36,7 +36,6 @@ ConVar ir_control_port("ir_control_port", "47702", 0, "TCP port hl-cl-consumer l
 // The session is the agent (ir-control §2.2): controls are accepted for the ingress session
 // hl-cl-producer has open, and only while it is open. `ir_session` names a session by hand
 // instead, for tests that run without the producer or the IR service.
-// SPEC-QUESTION: doc/notes/stream-f-questions.md#ir-session
 int WantedSession()
 {
 	const char *text = ir_session.GetString();
