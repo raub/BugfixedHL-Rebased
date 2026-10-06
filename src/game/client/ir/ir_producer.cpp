@@ -148,7 +148,6 @@ double WallSeconds()
 // stamped with, so that hl-dem-producer samples a recording of the same play at the same rate.
 // It stands still while the game is paused. (The client's game time, ref_params.time, follows
 // the server's clock and is corrected in small steps on a connection with changing latency.)
-// SPEC-QUESTION: doc/notes/stream-f-questions.md#sample-clock
 double SampleTime()
 {
 	return s_flLastAbsTime - s_flPausedTime;
@@ -712,9 +711,12 @@ void ir_producer::View(const struct ref_params_s *params)
 
 	if (s_Settings != CurrentSettings())
 	{
-		// A change of the settings restarts the session.
+		// A change of the settings restarts the session and reads the map configuration again:
+		// `ir_config` may have been set after the level started.
 		CloseSession("settings changed");
 		s_Level.openFailed = false;
+		s_Level.configTried = false;
+		s_Level.configLoaded = false;
 		s_Settings = CurrentSettings();
 	}
 	if (!playable)
@@ -726,7 +728,6 @@ void ir_producer::View(const struct ref_params_s *params)
 		TakeCommand(params->cmd); // a demo plays: its recorded command stands in for CL_CreateMove
 
 	// Weapon changes are judged once the messages of whole packets are in (hl-producer §11).
-	// SPEC-QUESTION: doc/notes/stream-f-questions.md#weapon-select-live
 	s_Hud.endPacket(now);
 
 	const cl_entity_t *local = gEngfuncs.GetEntityByIndex(s_iSelf);
