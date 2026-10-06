@@ -16,6 +16,7 @@
 #include "hud/spectator.h"
 #include "cl_voice_status.h"
 #include "engine_builds.h"
+#include "ir/ir_producer.h"
 
 #include "particleman.h"
 extern IParticleMan *g_pParticleMan;
@@ -90,6 +91,9 @@ structure, we need to copy them into the state structure at this point.
 */
 void CL_DLLEXPORT HUD_TxferLocalOverrides(struct entity_state_s *state, const struct clientdata_s *client)
 {
+	// IR Bot: the local player's state as the server sent it
+	ir_producer::ClientData(client);
+
 	// Ugly HL engine calls HUD_AddEntity after adding dynamic lights and other effect.
 	// So have to hack in here. Called once per packet.
 	if (!r_dynamic_ent_light.GetBool())

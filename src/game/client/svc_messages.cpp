@@ -22,6 +22,7 @@
 #include "parsemsg.h"
 #include "vgui/client_viewport.h"
 #include "hud/timer.h"
+#include "ir/ir_producer.h"
 
 static_assert(sizeof(SvcClientFuncs) == sizeof(void *) * SVC_MSG_COUNT, "SvcClientFuncs size doesn't match SVC_MSG_COUNT");
 
@@ -122,6 +123,9 @@ void CSvcMessages::Init()
 	m_Handlers.funcs.pfnSvcSendCvarValue = CallMember<&CSvcMessages::SvcSendCvarValue>;
 	m_Handlers.funcs.pfnSvcSendCvarValue2 = CallMember<&CSvcMessages::SvcSendCvarValue2>;
 	m_Handlers.funcs.pfnSvcUpdateUserInfo = CallMember<&CSvcMessages::SvcUpdateUserInfo>;
+
+	// IR Bot: hl-cl-producer listens to sounds, the resource list, and level starts
+	ir_producer::InstallSvcHooks(m_Handlers.funcs);
 
 	CEnginePatches::Get().HookSvcHandlers(m_Handlers.array);
 	m_bInitialized = true;

@@ -2,6 +2,8 @@
 //
 // A player (ir-player, ir-bot, or a test tool) opens a control channel over TCP and sends
 // controls over UDP; while the channel is open they replace the local keyboard and mouse.
+// Channels are accepted for the ingress session hl-cl-producer has open (ir_producer.h): the
+// session is the agent. `ir_session <id>` names a session by hand for tests without it.
 // Protocol and rules: doc/spec/ir-control_v1.md in https://github.com/raub/ir-bot.
 //
 // The protocol code lives in ir-bot's hl/common. When this repository is built on its own
@@ -16,7 +18,7 @@ namespace ir_consumer
 
 #ifdef BHL_IRBOT
 
-// HUD_Frame: opens or closes the listener as `ir_session` asks and polls the sockets.
+// HUD_Frame: opens or closes the listener with the producer's session and polls the sockets.
 void Frame();
 
 // HUD_Shutdown: closes the sockets.

@@ -4,6 +4,7 @@
 
 #include "wrect.h"
 #include "cl_dll.h"
+#include "ir/ir_producer.h"
 
 #define FADE_TIME 100
 
@@ -54,6 +55,7 @@ public:
 	void HookMessage(const char *name)
 	{
 		gEngfuncs.pfnHookUserMsg((char *)name, [](const char *pszName, int iSize, void *pbuf) -> int {
+			ir_producer::UserMessage(pszName, iSize, pbuf); // IR Bot: hl-cl-producer reads HUD values
 			return (ELEM::Get()->*FUNC)(pszName, iSize, pbuf);
 		});
 	}

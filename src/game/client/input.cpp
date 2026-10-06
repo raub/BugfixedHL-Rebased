@@ -28,6 +28,7 @@
 
 #include "vgui/client_viewport.h"
 #include "ir/ir_consumer.h"
+#include "ir/ir_producer.h"
 
 extern int g_iAlive;
 
@@ -847,6 +848,9 @@ void CL_DLLEXPORT CL_CreateMove(float frametime, struct usercmd_s *cmd, int acti
 	{
 		VectorCopy(oldangles, cmd->viewangles);
 	}
+
+	// IR Bot: the finished command is what hl-cl-producer reports as the control
+	ir_producer::CreateMove(cmd, active);
 }
 
 /*

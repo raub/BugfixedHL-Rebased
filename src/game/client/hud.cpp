@@ -35,6 +35,7 @@
 #include "cl_util.h"
 #include "parsemsg.h"
 #include "vgui/client_viewport.h"
+#include "ir/ir_producer.h"
 #include "gameui/options/colorpicker/texture_manager.h"
 #include "hud_renderer.h"
 
@@ -187,6 +188,7 @@ template <int (CHud::*FUNC)(const char *, int, void *)>
 void HookHudMessage(const char *name)
 {
 	gEngfuncs.pfnHookUserMsg((char *)name, [](const char *pszName, int iSize, void *pbuf) -> int {
+		ir_producer::UserMessage(pszName, iSize, pbuf); // IR Bot: hl-cl-producer reads HUD values
 		return (gHUD.*FUNC)(pszName, iSize, pbuf);
 	});
 }
