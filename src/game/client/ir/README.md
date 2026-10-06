@@ -35,4 +35,4 @@ A session is open while the game is playable for the local player on a map that 
 
 `ir_producer.h` and `ir_consumer.h` list every hook with the place it is called from. The calls are
 single lines in `cdll_int.cpp`, `input.cpp`, `view.cpp`, `entity.cpp`, `hud.cpp`, `hud/base.h`,
-`svc_messages.cpp`, and `hl/hl_events.cpp`, each marked with an `IR Bot:` comment.
+`svc_messages.cpp`, and `hl/hl_events.cpp`.
