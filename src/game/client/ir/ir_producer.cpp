@@ -76,7 +76,7 @@ namespace
 ConVar ir_produce("ir_produce", "0", 0, "hl-cl-producer: 0 = off, 1 = send IR Ingress frames while playing, 2 = also while a demo plays (for checks)");
 ConVar ir_service("ir_service", "127.0.0.1:47700", 0, "Address of the IR service (empty = do not connect)");
 ConVar ir_record("ir_record", "0", 0, "1 = also write every session into an .irin file");
-ConVar ir_record_dir("ir_record_dir", "", 0, "Folder for .irin files (default: <IRBOT_DATA>/irin, else <game>/irin)");
+ConVar ir_record_dir("ir_record_dir", "", 0, "Folder for .irin files (default: <IRBOT_DATA>/irin/<rate>hz, else <game>/irin/<rate>hz)");
 ConVar ir_config("ir_config", "", 0, "Folder with the map configuration files (default: IRBOT_CONFIG, else <IRBOT_DATA>/../config)");
 
 ConVar ir_snapshot("ir_snapshot", "", 0, "For checks: \"<from> <to> <every>\" takes a game snapshot at these frame indices, to compare with the IR service's images");
@@ -177,15 +177,25 @@ std::string ConfigDir()
 	return data.empty() ? std::string("config") : data + "/../config";
 }
 
-std::string RecordDir()
+// Ingress files of one sample rate share a folder, as scripts/ingest-demos.sh lays them out.
+std::string RecordDir(std::uint32_t rate)
 {
 	const char *cvar = ir_record_dir.GetString();
 	if (cvar && cvar[0])
 		return cvar;
+	const std::string folder = "/irin/" + std::to_string(rate) + "hz";
 	const std::string data = EnvOr("IRBOT_DATA", "");
 	if (!data.empty())
-		return data + "/irin";
-	return std::string(gEngfuncs.pfnGetGameDirectory()) + "/irin";
+		return data + folder;
+	return std::string(gEngfuncs.pfnGetGameDirectory()) + folder;
+}
+
+// The rate this session is sampled at: the map configuration's, which every session states in
+// its OPEN_SESSION and in the header of its .irin file (ir-ingress protocol version 2).
+std::uint32_t SessionRate()
+{
+	const std::uint32_t rate = s_Level.irmap.rate;
+	return rate >= 1 && rate <= hl::ingress::kMaxSampleRateHz ? rate : 20;
 }
 
 // game_id of the game directory (hl-producer §1).
@@ -468,6 +478,7 @@ bool OpenSession(double now)
 	EnsureBsp();
 
 	const std::string gameId = GameId();
+	const std::uint32_t rate = SessionRate();
 	bool hasSink = false;
 
 	const std::string service = ir_service.GetString();
@@ -482,9 +493,9 @@ bool OpenSession(double now)
 			port = std::atoi(service.c_str() + colon + 1);
 		}
 		std::string error;
-		if (port > 0 && port <= 65535 && s_Client.open(host, static_cast<std::uint16_t>(port), gameId, s_Level.mapId, &error))
+		if (port > 0 && port <= 65535 && s_Client.open(host, static_cast<std::uint16_t>(port), gameId, s_Level.mapId, rate, &error))
 		{
-			ConPrintf("ir-ingress: session %u opened with the IR service at %s (%s/%s)\n", (unsigned)s_Client.sessionId(), service.c_str(), gameId.c_str(), s_Level.mapId.c_str());
+			ConPrintf("ir-ingress: session %u opened with the IR service at %s (%s/%s, %u Hz)\n", (unsigned)s_Client.sessionId(), service.c_str(), gameId.c_str(), s_Level.mapId.c_str(), (unsigned)rate);
 			hasSink = true;
 		}
 		else
@@ -495,11 +506,11 @@ bool OpenSession(double now)
 
 	if (ir_record.GetBool())
 	{
-		const std::string dir = RecordDir();
+		const std::string dir = RecordDir(rate);
 		std::error_code ignored;
 		std::filesystem::create_directories(dir, ignored);
 		s_RecordPath = dir + "/" + s_Level.mapId + "-" + TimeStamp() + ".irin";
-		if (s_Writer.open(s_RecordPath, gameId, s_Level.mapId))
+		if (s_Writer.open(s_RecordPath, gameId, s_Level.mapId, rate))
 		{
 			ConPrintf("ir-ingress: recording %s\n", s_RecordPath.c_str());
 			hasSink = true;
@@ -517,7 +528,7 @@ bool OpenSession(double now)
 		return false;
 	}
 
-	s_Sampler.begin(now, s_Level.irmap.rate > 0 ? s_Level.irmap.rate : 20.0);
+	s_Sampler.begin(now, static_cast<double>(rate));
 	s_Hud.beginSession();
 	s_Buttons.reset();
 	s_Buttons.setHeld(s_iHeldButtons);
