@@ -6,7 +6,7 @@ shared code `../common` exists; built on its own, the hooks are empty.
 
 | Component | Files | Does |
 |---|---|---|
-| `hl-cl-producer` | `ir_producer.{h,cpp}` | observes the local player and sends IR Ingress frames to the IR service, 20 per second; can record them into an `.irin` file |
+| `hl-cl-producer` | `ir_producer.{h,cpp}` | observes the local player and sends IR Ingress frames to the IR service, at the `rate` of the map configuration; can record them into an `.irin` file |
 | `hl-cl-consumer` | `ir_consumer.{h,cpp}` | applies IR Control from a player (viewer or bot) to the local player |
 
 Specifications, in ir-bot: `doc/spec/hl-producer_v1.md` (§13), `doc/spec/ir-ingress-protocol_v1.md`,
@@ -19,7 +19,7 @@ Specifications, in ir-bot: `doc/spec/hl-producer_v1.md` (§13), `doc/spec/ir-ing
 | `ir_produce` | `0` | `1`: produce frames while playing; `2`: also while a demo plays (for checks) |
 | `ir_service` | `127.0.0.1:47700` | address of the IR service; empty: do not connect |
 | `ir_record` | `0` | `1`: also write each session into an `.irin` file |
-| `ir_record_dir` | | folder for `.irin` files; default `<IRBOT_DATA>/irin`, else `<game>/irin` |
+| `ir_record_dir` | | folder for `.irin` files; default `<IRBOT_DATA>/irin/<rate>hz`, else `<game>/irin/<rate>hz` |
 | `ir_config` | | folder with the map configurations; default `IRBOT_CONFIG`, else `<IRBOT_DATA>/../config` |
 | `ir_connect` | command | closes the session and opens a new one (after starting the IR service) |
 | `ir_snapshot` | | `"<from> <to> <every>"`: game snapshots at these frame indices, to compare with the IR service's images |
