@@ -172,6 +172,11 @@ void ir_consumer::Shutdown()
 
 void ir_consumer::PreCreateMove(int active)
 {
+	// Controls that arrived since the last frame are read here, right before this frame's
+	// command is made, not only in Frame(), which comes after it: else a control waits a whole
+	// game frame more. At 100 frames a second that is unseen; with the window in the
+	// background the game runs slower, and the control showed a sample later (2026-10-18).
+	s_Server.poll(NowMs());
 	if (active && s_bTakeover)
 		gEngfuncs.GetViewAngles((float *)s_vecViewAngles);
 }
