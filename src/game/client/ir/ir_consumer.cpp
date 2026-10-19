@@ -4,7 +4,9 @@
 // §4 (angles), §7.1 (weapon ids), §11 (movement normalization).
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 #include "hud.h"
 #include "cl_util.h"
@@ -32,6 +34,8 @@ namespace
 
 ConVar ir_session("ir_session", "", 0, "For tests without hl-cl-producer: accept control channels for this session id (empty = the producer's session)");
 ConVar ir_control_port("ir_control_port", "47702", 0, "TCP port hl-cl-consumer listens on (controls arrive on the same UDP port)");
+ConVar ir_respawn("ir_respawn", "0", 0, "Practice: kill the local player this many seconds into each life (0 = off)");
+ConVar ir_give("ir_give", "", 0, "Practice: give the local player this item at the start of each life, a weapon also into the hand (needs sv_cheats 1)");
 
 // The session is the agent (ir-control §2.2): controls are accepted for the ingress session
 // hl-cl-producer has open, and only while it is open. `ir_session` names a session by hand
@@ -124,8 +128,56 @@ CON_COMMAND(ir_status, "Prints the state of hl-cl-consumer")
 	    !s_bTakeover ? "no channel (local input)" : s_bHandsOff ? "channel open, hands-off" : "channel open, controls applied");
 }
 
+namespace
+{
+double s_flLifeStart = -1; // real time the local player's life began, -1 = not alive
+int s_iGiven = 0; // gifts made in this life
+
+// Practice helpers (ir_respawn, ir_give), by the real clock and outside the console's command
+// buffer. They were a loop of `wait` commands in a console script before, which held back every
+// other console command while it ran: a human's key binds, `quit` (2026-10-19); and its waits
+// counted game frames, which are fewer with the window in the background.
+void Practice()
+{
+	const int health = ir_producer::ViewHealth();
+	const double now = NowMs() / 1000.0;
+	if (health <= 0)
+	{
+		s_flLifeStart = -1;
+		return;
+	}
+	if (s_flLifeStart < 0)
+	{
+		s_flLifeStart = now;
+		s_iGiven = 0;
+	}
+	const double alive = now - s_flLifeStart;
+	const char *item = ir_give.GetString();
+	// Twice: half a second in, when the player is surely spawned, and once more in case the
+	// first came too early.
+	if (item && item[0] && s_iGiven < 2 && alive >= 0.5 + 2.5 * s_iGiven)
+	{
+		char command[160];
+		if (std::strncmp(item, "weapon_", 7) == 0)
+			std::snprintf(command, sizeof(command), "give %s\n%s\n", item, item); // into the hand: cl_autowepswitch may be 0
+		else
+			std::snprintf(command, sizeof(command), "give %s\n", item);
+		gEngfuncs.pfnClientCmd(command);
+		s_iGiven++;
+	}
+	const float seconds = ir_respawn.GetFloat();
+	if (seconds > 0 && alive >= seconds)
+	{
+		gEngfuncs.pfnClientCmd("kill\n");
+		s_flLifeStart = now; // not again before the death shows
+	}
+}
+}
+
 void ir_consumer::Frame()
 {
+	Practice();
+
 	const int session = WantedSession();
 	if (session != s_iSession)
 	{

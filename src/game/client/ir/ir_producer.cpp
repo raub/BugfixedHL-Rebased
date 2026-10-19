@@ -127,6 +127,7 @@ hl::SelfState s_Self;
 hl::Vec3 s_vecPlayerOrigin;
 int s_iSelf = 0; // entity index of the local player, 0 = unknown
 int s_iClientFlags = 0;
+int s_iViewHealth = -1; // the local player's health in the last view, -1 = not in the game
 float s_flForwardMove = 0, s_flSideMove = 0;
 std::uint8_t s_iHeldButtons = 0;
 double s_flLastViewWall = 0;
@@ -754,6 +755,7 @@ void ir_producer::View(const struct ref_params_s *params)
 	s_Self.onLadder = local && local->curstate.movetype == hl::kMoveTypeFly;
 	s_Self.waterLevel = params->waterlevel;
 	s_Self.health = params->health;
+	s_iViewHealth = params->intermission || params->spectator || g_iUser1 ? -1 : params->health;
 	s_Self.forwardMove = s_flForwardMove;
 	s_Self.sideMove = s_flSideMove;
 	s_Self.maxSpeed = MaxSpeed();
@@ -779,6 +781,11 @@ void ir_producer::Frame()
 void ir_producer::Shutdown()
 {
 	CloseSession("shutdown");
+}
+
+int ir_producer::ViewHealth()
+{
+	return s_iViewHealth;
 }
 
 int ir_producer::SessionId()

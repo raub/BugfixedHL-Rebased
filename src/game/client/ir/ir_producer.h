@@ -57,6 +57,10 @@ void Shutdown();
 // service. hl-cl-consumer accepts control channels for this session only.
 int SessionId();
 
+// The local player's health in the last view, or -1 while he is not in the game (intermission,
+// spectator, no view yet). Read by the practice helpers of hl-cl-consumer.
+int ViewHealth();
+
 // The speed that movement 1.0 stands for; hl-cl-consumer multiplies by the same value.
 float MaxSpeed();
 
@@ -74,6 +78,7 @@ inline void View(const struct ref_params_s *) {}
 inline void Frame() {}
 inline void Shutdown() {}
 inline int SessionId() { return -1; }
+inline int ViewHealth() { return -1; }
 inline float MaxSpeed() { return 0; }
 inline void PrintStatus() {}
 
