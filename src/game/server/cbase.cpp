@@ -21,6 +21,7 @@
 #include "decals.h"
 #include "gamerules.h"
 #include "game.h"
+#include "ir/ir_server.h"
 
 //! How many units away from the center of the map will entities stop working
 constexpr float WORLD_BOUNDARY_DIST = 262144;
@@ -30,6 +31,12 @@ void EntvarsKeyvalue(entvars_t *pev, KeyValueData *pkvd);
 extern Vector VecBModelOrigin(entvars_t *pevBModel);
 extern DLL_GLOBAL Vector g_vecAttackDir;
 extern DLL_GLOBAL int g_iSkillLevel;
+
+// IR Bot: PM_Move, through hl-sv-producer, which notes the sounds of player movement.
+static void IrPlayerMove(struct playermove_s *ppmove, int server)
+{
+	ir_server::PlayerMove(ppmove, server, PM_Move);
+}
 
 static DLL_FUNCTIONS gFunctionTable = {
 	GameDLLInit, //pfnGameInit
@@ -75,7 +82,7 @@ static DLL_FUNCTIONS gFunctionTable = {
 
 	Sys_Error, //pfnSys_Error				Called when engine has encountered an error
 
-	PM_Move, //pfnPM_Move
+	IrPlayerMove, //pfnPM_Move (IR Bot: PM_Move, with the sounds of fake players' movement noted)
 	PM_Init, //pfnPM_Init				Server version of player movement initialization
 	PM_FindTextureType, //pfnPM_FindTextureType
 
