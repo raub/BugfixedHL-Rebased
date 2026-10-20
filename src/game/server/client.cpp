@@ -23,6 +23,7 @@
 
 */
 
+#include "ir/ir_server.h"
 #include "extdll.h"
 #include "util.h"
 #include "cbase.h"
@@ -100,6 +101,8 @@ GLOBALS ASSUMED SET:  g_fGameOver
 */
 void ClientDisconnect(edict_t *pEntity)
 {
+	ir_server::Disconnect(pEntity); // IR Bot
+
 	if (g_fGameOver)
 		return;
 
@@ -838,6 +841,8 @@ void ParmsChangeLevel(void)
 //
 void StartFrame(void)
 {
+	ir_server::Frame(); // IR Bot: fake players moved by IR Control
+
 	if (g_pGameRules)
 		g_pGameRules->Think();
 

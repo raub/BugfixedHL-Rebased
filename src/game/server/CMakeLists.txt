@@ -157,6 +157,15 @@ set( SOURCE_FILES
 	zombie.cpp
 )
 
+# IR Bot (https://github.com/raub/ir-bot): hl-sv-consumer. Its protocol code is in ir-bot's
+# hl/common, next to this repository when it is checked out as ir-bot's submodule.
+set( SOURCE_FILES
+	${SOURCE_FILES}
+	ir/ir_server.cpp
+	ir/ir_server.h
+)
+get_filename_component( IRBOT_HL_DIR "${PROJECT_SOURCE_DIR}/.." ABSOLUTE )
+
 if( PLATFORM_WINDOWS )
 	set( SOURCE_FILES
 		${SOURCE_FILES}
@@ -186,6 +195,19 @@ target_compile_definitions( ${TARGET_NAME} PRIVATE
 )
 
 target_precompile_headers( ${TARGET_NAME} PRIVATE pch.h )
+
+if( EXISTS "${IRBOT_HL_DIR}/common/control_net.hpp" )
+	message( STATUS "IR Bot: hl-sv-consumer enabled (${IRBOT_HL_DIR}/common)" )
+	target_include_directories( ${TARGET_NAME} PRIVATE ${IRBOT_HL_DIR} )
+	target_compile_definitions( ${TARGET_NAME} PRIVATE BHL_IRBOT )
+	set_source_files_properties( ir/ir_server.cpp PROPERTIES SKIP_PRECOMPILE_HEADERS ON )
+	if( WIN32 )
+		target_link_libraries( ${TARGET_NAME} ws2_32 )
+	endif()
+else()
+	message( STATUS "IR Bot: hl/common not found, hl-sv-consumer disabled" )
+	set_source_files_properties( ir/ir_server.cpp PROPERTIES HEADER_FILE_ONLY TRUE )
+endif()
 
 # Dependencies
 if( WIN32 )
