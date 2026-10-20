@@ -12,6 +12,7 @@
 *   without written permission from Valve LLC.
 *
 ****/
+#include "ir/ir_server.h"
 #include "extdll.h"
 #include "eiface.h"
 #include "util.h"
@@ -481,6 +482,7 @@ cvar_t sv_busters = { "sv_busters", "0" };
 // This gets called one time when the game is initialied
 void GameDLLInit(void)
 {
+	ir_server::Init(); // IR Bot
 	// Get cvars here:
 
 	g_psv_gravity = CVAR_GET_POINTER("sv_gravity");
