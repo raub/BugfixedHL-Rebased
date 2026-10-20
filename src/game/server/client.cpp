@@ -269,6 +269,8 @@ void ClientPutInServer(edict_t *pEntity)
 
 	// Mark as PutInServer
 	pPlayer->m_bPutInServer = TRUE;
+
+	ir_server::PutInServer(pEntity); // IR Bot: a human player gets a session
 }
 
 #include "voice_gamemgr.h"
@@ -1865,6 +1867,7 @@ This is the time to examine the usercmd for anything extra.  This call happens e
 */
 void CmdStart(const edict_t *player, const struct usercmd_s *cmd, unsigned int random_seed)
 {
+	ir_server::Command(player, cmd); // IR Bot: a human's control
 	entvars_t *pev = (entvars_t *)&player->v;
 	CBasePlayer *pl = (CBasePlayer *)CBasePlayer::Instance(pev);
 
