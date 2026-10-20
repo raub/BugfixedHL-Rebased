@@ -19,12 +19,15 @@
 // All rules (what is reported, boxes, identities, sound lifetime, weapon selection, sampling)
 // are ir-bot's hl/common, the same code hl-cl-producer and hl-dem-producer run.
 #include <chrono>
+#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
+#include <fstream>
 #include <map>
 #include <memory>
+#include <regex>
 #include <set>
 #include <string>
 #include <vector>
@@ -77,6 +80,7 @@ cvar_t ir_record = { "ir_record", "0", 0 };
 cvar_t ir_record_dir = { "ir_record_dir", "", 0 };
 cvar_t ir_config = { "ir_config", "", 0 };
 cvar_t ir_game = { "ir_game", "hl", 0 };
+cvar_t ir_kills = { "ir_kills", "", 0 };
 
 constexpr double RETRY_SECONDS = 5.0; // between attempts to open a session that failed
 
@@ -115,6 +119,7 @@ struct Producer
 	std::uint32_t framesSent = 0;
 	std::uint32_t framesInvalid = 0;
 	std::size_t lastEntities = 0, lastSounds = 0;
+	std::uint16_t lastIndex = 0; // frame_index of the last frame sent
 };
 
 // A player with a session: a fake player, or a human who plays on the server.
@@ -516,6 +521,7 @@ void EmitFrame(Player &one)
 	hl::ingress::Frame frame;
 	frame.sessionId = p.client.isOpen() ? p.client.sessionId() : 0;
 	frame.frameIndex = p.sampler.nextFrameIndex();
+	p.lastIndex = frame.frameIndex;
 	hl::fillAgent(p.self, p.hud, frame.agent);
 
 	// ENTITY[] (hl-producer §8): what the engine would send to this player as a client.
@@ -820,6 +826,93 @@ void HookPlaybackEvent(int flags, const edict_t *invoker, unsigned short index, 
 	s_Engine.pfnPlaybackEvent(flags, invoker, index, delay, origin, angles, fparam1, fparam2, iparam1, iparam2, bparam1, bparam2);
 }
 
+// --- Kills and deaths ------------------------------------------------------------------------
+//
+// The game logs every kill and suicide (UTIL_LogPrintf, through the engine's AlertMessage). Each
+// one that concerns a player with a session is noted in a file, one JSON object per line, as
+// ir-train's KillNotes notes the kills of a bot in a game client: the time, the frame index of
+// the player's session at that moment, what (kill, death, suicide), the other player, the
+// weapon, and the player's name, which also ends the name of its recording. So the trainer
+// knows which lives of a recording went well.
+
+// <IRBOT_DATA>/kills.jsonl, else kills.jsonl in the game folder.
+std::string KillsPath()
+{
+	if (ir_kills.string && ir_kills.string[0])
+		return ir_kills.string;
+	const std::string data = EnvOr("IRBOT_DATA", "");
+	if (!data.empty())
+		return data + "/kills.jsonl";
+	char game[256] = "";
+	GET_GAME_DIR(game);
+	return std::string(game) + "/kills.jsonl";
+}
+
+std::string JsonText(const std::string &text)
+{
+	std::string out = "\"";
+	for (const char c : text)
+	{
+		if (c == '"' || c == '\\')
+			out += '\\';
+		if (static_cast<unsigned char>(c) >= 0x20)
+			out += c;
+	}
+	return out + "\"";
+}
+
+Player *FindUserId(int userId)
+{
+	for (Player &one : s_Players)
+		if (GETPLAYERUSERID(one.edict) == userId)
+			return &one;
+	return nullptr;
+}
+
+void NoteKill(Player *one, const char *what, const std::string &other, const std::string &weapon)
+{
+	if (!one || !one->producer->sampler.open())
+		return;
+	using namespace std::chrono;
+	const double now = duration<double>(system_clock::now().time_since_epoch()).count();
+	char time[32];
+	std::snprintf(time, sizeof(time), "%.2f", now);
+	std::ofstream file(KillsPath(), std::ios::app);
+	file << "{\"time\": " << time << ", \"frame\": " << one->producer->lastIndex << ", \"what\": \"" << what
+	     << "\", \"other\": " << JsonText(other) << ", \"weapon\": " << JsonText(weapon)
+	     << ", \"player\": " << JsonText(STRING(one->edict->v.netname)) << "}\n";
+}
+
+// One line the game logs: "<name><uid><auth><team>" killed "<name><uid><auth><team>" with "<weapon>",
+// or "<name><uid><auth><team>" committed suicide with "<weapon>".
+void OnLogged(const std::string &line)
+{
+	static const std::regex killed(R"re("(.*)<(-?\d+)><[^>]*><[^>]*>" killed "(.*)<(-?\d+)><[^>]*><[^>]*>" with "([^"]*)")re");
+	static const std::regex suicide(R"re("(.*)<(-?\d+)><[^>]*><[^>]*>" committed suicide with "([^"]*)")re");
+	std::smatch m;
+	if (std::regex_search(line, m, killed))
+	{
+		NoteKill(FindUserId(std::atoi(m[2].str().c_str())), "kill", m[3].str(), m[5].str());
+		NoteKill(FindUserId(std::atoi(m[4].str().c_str())), "death", m[1].str(), m[5].str());
+	}
+	else if (std::regex_search(line, m, suicide))
+	{
+		NoteKill(FindUserId(std::atoi(m[2].str().c_str())), "suicide", "", m[3].str());
+	}
+}
+
+void HookAlertMessage(ALERT_TYPE type, char *format, ...)
+{
+	char text[2048];
+	va_list args;
+	va_start(args, format);
+	std::vsnprintf(text, sizeof(text), format, args);
+	va_end(args);
+	if (type == at_logged && !s_Players.empty() && (std::strstr(text, "\" killed \"") || std::strstr(text, "\" committed suicide with \"")))
+		OnLogged(text);
+	s_Engine.pfnAlertMessage(type, const_cast<char *>("%s"), text);
+}
+
 // The footsteps and other sounds of player movement, which the engine plays for the moving
 // player's entity.
 int s_iMovingPlayer = 0;
@@ -854,6 +947,7 @@ void InstallHooks()
 	g_engfuncs.pfnEmitAmbientSound = HookEmitAmbientSound;
 	g_engfuncs.pfnPrecacheEvent = HookPrecacheEvent;
 	g_engfuncs.pfnPlaybackEvent = HookPlaybackEvent;
+	g_engfuncs.pfnAlertMessage = HookAlertMessage;
 }
 
 // --- Commands -------------------------------------------------------------------------------
@@ -1011,6 +1105,7 @@ void ir_server::Init()
 	CVAR_REGISTER(&ir_record_dir);
 	CVAR_REGISTER(&ir_config);
 	CVAR_REGISTER(&ir_game);
+	CVAR_REGISTER(&ir_kills);
 	g_engfuncs.pfnAddServerCommand("ir_bot_add", CommandAdd);
 	g_engfuncs.pfnAddServerCommand("ir_bot_status", CommandStatus);
 	InstallHooks();
