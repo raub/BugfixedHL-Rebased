@@ -5,7 +5,8 @@
 // (doc/spec/ir-control_v1.md §6 and §8 in https://github.com/raub/ir-bot); without an open control
 // channel a fake player stands still. And it observes each of them into an IR Ingress session of
 // its own (doc/spec/hl-producer_v1.md §14): what the player sees, its state, what it hears, and
-// the control it was given. That session's id, which the IR service hands out, is also the
+// the control it was given. Human players on the server get a session too, with the commands
+// their clients send as the control; they are observed, not moved. That session's id, which the IR service hands out, is also the
 // player's IR Control session; while no IR service is there, the session is the player's number.
 //
 // The protocol code and its rules live in ir-bot's hl/common, shared with hl-cl-consumer. When this
@@ -25,8 +26,14 @@ void Init();
 // StartFrame, before the game rules think: reads arriving controls and moves the fake players.
 void Frame();
 
-// ClientDisconnect: forgets a fake player that left (kicked, or the server shuts down).
+// ClientDisconnect: forgets a player that left (kicked, or the server shuts down).
 void Disconnect(struct edict_s *player);
+
+// ClientPutInServer: a human player gets a session too, observed but not moved.
+void PutInServer(struct edict_s *player);
+
+// CmdStart: a human player's command, its control in the session.
+void Command(const struct edict_s *player, const struct usercmd_s *cmd);
 
 // The game's PM_Move export: runs `move`, and notes the sounds of player movement (footsteps).
 void PlayerMove(struct playermove_s *pmove, int server, void (*move)(struct playermove_s *, int));
@@ -36,6 +43,8 @@ void PlayerMove(struct playermove_s *pmove, int server, void (*move)(struct play
 inline void Init() {}
 inline void Frame() {}
 inline void Disconnect(struct edict_s *) {}
+inline void PutInServer(struct edict_s *) {}
+inline void Command(const struct edict_s *, const struct usercmd_s *) {}
 inline void PlayerMove(struct playermove_s *pmove, int server, void (*move)(struct playermove_s *, int)) { move(pmove, server); }
 
 #endif

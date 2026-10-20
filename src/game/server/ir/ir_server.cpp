@@ -37,6 +37,7 @@
 #include "entity_state.h"
 #include "event_flags.h"
 #include "pm_defs.h"
+#include "usercmd.h"
 
 #include "ir_server.h"
 
@@ -116,10 +117,12 @@ struct Producer
 	std::size_t lastEntities = 0, lastSounds = 0;
 };
 
-struct FakePlayer
+// A player with a session: a fake player, or a human who plays on the server.
+struct Player
 {
 	edict_t *edict = nullptr;
-	int number = 0; // 1, 2, ...: its name and its control session without an ingress session
+	bool fake = true; // a fake player, moved by IR Control; a human is only observed
+	int number = 0; // fake players: 1, 2, ...: the name, and the control session without ingress
 	std::uint16_t session = 0; // the IR Control session that moves it
 	bool handsOff = true;
 	float forwardMove = 0, sideMove = 0; // the movement applied in the last server frame
@@ -131,7 +134,7 @@ bool s_bHooked = false;
 
 hl::ControlServer s_Server;
 int s_iListenPort = 0;
-std::vector<FakePlayer> s_Players;
+std::vector<Player> s_Players;
 Level s_Level;
 std::string s_LevelName; // gpGlobals->mapname of s_Level
 std::map<int, std::string> s_UserMessages; // user message id -> name
@@ -244,12 +247,29 @@ float MaxSpeed(const edict_t *player)
 	return speed;
 }
 
-FakePlayer *Find(std::uint16_t session)
+// The fake player an IR Control session moves; humans are not moved.
+Player *Find(std::uint16_t session)
 {
-	for (FakePlayer &one : s_Players)
-		if (one.session == session)
+	for (Player &one : s_Players)
+		if (one.fake && one.session != 0 && one.session == session)
 			return &one;
 	return nullptr;
+}
+
+Player *FindEdict(const edict_t *edict)
+{
+	for (Player &one : s_Players)
+		if (one.edict == edict)
+			return &one;
+	return nullptr;
+}
+
+int FakeCount()
+{
+	int count = 0;
+	for (const Player &one : s_Players)
+		count += one.fake ? 1 : 0;
+	return count;
 }
 
 int FreeNumber()
@@ -258,7 +278,7 @@ int FreeNumber()
 	for (bool taken = true; taken; number++)
 	{
 		taken = false;
-		for (const FakePlayer &one : s_Players)
+		for (const Player &one : s_Players)
 			taken = taken || one.number == number;
 		if (!taken)
 			return number;
@@ -289,12 +309,12 @@ std::string LevelPath()
 	return std::string("maps/") + STRING(gpGlobals->mapname) + ".bsp";
 }
 
-void CloseSession(FakePlayer &one, const char *why);
+void CloseSession(Player &one, const char *why);
 
 // A new level: nothing of the old one is valid any more.
 void NewLevel()
 {
-	for (FakePlayer &one : s_Players)
+	for (Player &one : s_Players)
 	{
 		CloseSession(one, "level change");
 		one.producer->hud.newLevel();
@@ -389,7 +409,7 @@ bool InGame(const edict_t *edict)
 	return !(edict->v.flags & FL_SPECTATOR) && edict->v.iuser1 == 0;
 }
 
-void CloseSession(FakePlayer &one, const char *why)
+void CloseSession(Player &one, const char *why)
 {
 	Producer &p = *one.producer;
 	if (!p.sampler.open())
@@ -406,8 +426,9 @@ void CloseSession(FakePlayer &one, const char *why)
 }
 
 // The control session of a fake player is its ingress session, the session the IR service
-// lists and a bot subscribes to; without one it is the player's number.
-void UpdateControlSession(FakePlayer &one)
+// lists and a bot subscribes to; without one it is the player's number. A human's session is
+// only its ingress session (0: none).
+void UpdateControlSession(Player &one)
 {
 	const std::uint16_t session = one.producer->client.isOpen() ? one.producer->client.sessionId() : static_cast<std::uint16_t>(one.number);
 	if (session == one.session)
@@ -421,7 +442,7 @@ void ApplySound(Producer &p, int self, const hl::SoundMessage &s, const std::str
 	hl::applyServerSound(p.sounds, s, self, name, !name.empty() && IsLoop(name), SoundIdFor);
 }
 
-void OpenSession(FakePlayer &one, double now)
+void OpenSession(Player &one, double now)
 {
 	Producer &p = *one.producer;
 	p.retryAt = now + RETRY_SECONDS;
@@ -486,7 +507,7 @@ void OpenSession(FakePlayer &one, double now)
 		ApplySound(p, self, s_Level.staticSounds[i], s_Level.staticNames[i]);
 }
 
-void EmitFrame(FakePlayer &one)
+void EmitFrame(Player &one)
 {
 	Producer &p = *one.producer;
 	edict_t *host = one.edict;
@@ -572,7 +593,7 @@ void EmitFrame(FakePlayer &one)
 }
 
 // The player's state after this server frame's move.
-void Observe(FakePlayer &one)
+void Observe(Player &one)
 {
 	const edict_t *edict = one.edict;
 	hl::SelfState &s = one.producer->self;
@@ -592,7 +613,7 @@ void Observe(FakePlayer &one)
 	s.maxSpeed = MaxSpeed(edict);
 }
 
-void Produce(FakePlayer &one, double now)
+void Produce(Player &one, double now)
 {
 	Producer &p = *one.producer;
 	// Weapon changes are judged once the messages of a whole server frame are in (§11).
@@ -709,7 +730,7 @@ void HookMessageEnd()
 	s_Message.kept = false;
 	const bool toOne = s_Message.dest == MSG_ONE || s_Message.dest == MSG_ONE_UNRELIABLE;
 	const bool toAll = s_Message.dest == MSG_ALL || s_Message.dest == MSG_BROADCAST;
-	for (FakePlayer &one : s_Players)
+	for (Player &one : s_Players)
 	{
 		if (!(toAll || (toOne && s_Message.to == one.edict)))
 			continue;
@@ -752,7 +773,7 @@ void OnSound(edict_t *entity, const float *position, int channel, const char *sa
 	}
 	// SPEC-QUESTION: doc/notes/m6-server-bots.md#sound-reach: every player hears every sound
 	// here; the engine sends most of them only to the players whose PAS holds the sound.
-	for (FakePlayer &one : s_Players)
+	for (Player &one : s_Players)
 		if (one.producer->sampler.open())
 			ApplySound(*one.producer, ENTINDEX(one.edict), s, name);
 }
@@ -787,7 +808,7 @@ void HookPlaybackEvent(int flags, const edict_t *invoker, unsigned short index, 
 		const hl::Vec3 at = origin ? ToVec3(origin) : hl::Vec3();
 		const auto found = s_EventNames.find(index);
 		const std::string name = found == s_EventNames.end() ? std::string() : found->second;
-		for (FakePlayer &one : s_Players)
+		for (Player &one : s_Players)
 		{
 			if (!one.producer->sampler.open())
 				continue;
@@ -850,7 +871,7 @@ void AddPlayer(std::string name)
 		return;
 	}
 	// Known before it connects: the game sends it the weapon list while it is put in the server.
-	FakePlayer added;
+	Player added;
 	added.edict = edict;
 	added.number = number;
 	added.session = static_cast<std::uint16_t>(number);
@@ -879,15 +900,17 @@ void CommandAdd()
 void CommandStatus()
 {
 	char line[512];
-	std::snprintf(line, sizeof(line), "ir-bot: %d fake players, IR Control on port %d, map %s%s\n", (int)s_Players.size(), s_iListenPort,
+	std::snprintf(line, sizeof(line), "ir-bot: %d fake players, %d humans, IR Control on port %d, map %s%s\n", FakeCount(),
+	    (int)s_Players.size() - FakeCount(), s_iListenPort,
 	    s_Level.mapId.c_str(), s_Level.configLoaded ? "" : " (no map configuration loaded)");
 	g_engfuncs.pfnServerPrint(line);
-	for (const FakePlayer &one : s_Players)
+	for (const Player &one : s_Players)
 	{
 		const Producer &p = *one.producer;
 		const Vector &at = one.edict->v.origin;
 		std::snprintf(line, sizeof(line), "  session %d  %s  %s  health %.0f  at %.0f %.0f %.0f  yaw %.0f\n", (int)one.session,
-		    STRING(one.edict->v.netname), s_Server.channel(one.session) ? (one.handsOff ? "channel open, hands-off" : "controlled") : "no channel",
+		    STRING(one.edict->v.netname),
+		    !one.fake ? "human, observed" : s_Server.channel(one.session) ? (one.handsOff ? "channel open, hands-off" : "controlled") : "no channel",
 		    one.edict->v.health, at.x, at.y, at.z, one.edict->v.v_angle.y);
 		g_engfuncs.pfnServerPrint(line);
 		if (p.sampler.open())
@@ -902,7 +925,7 @@ void CommandStatus()
 
 // One server frame of a fake player: the control in effect, as hl-cl-consumer applies it to the
 // local player (ir-control §6, §8).
-void Move(FakePlayer &one, float seconds)
+void Move(Player &one, float seconds)
 {
 	edict_t *edict = one.edict;
 	Producer &p = *one.producer;
@@ -998,14 +1021,14 @@ void ir_server::Frame()
 	if (s_LevelName != STRING(gpGlobals->mapname))
 		NewLevel();
 	// `ir_bots <n>`: fake players join, one a frame, until there are so many.
-	if (static_cast<int>(s_Players.size()) < static_cast<int>(ir_bots.value) && gpGlobals->time > 1.0f)
+	if (FakeCount() < static_cast<int>(ir_bots.value) && gpGlobals->time > 1.0f)
 		AddPlayer("");
 	if (s_Players.empty() && !s_Server.running())
 		return;
 	if (s_Settings != CurrentSettings())
 	{
 		// New settings take effect with new sessions; the map configuration is read again.
-		for (FakePlayer &one : s_Players)
+		for (Player &one : s_Players)
 		{
 			CloseSession(one, "settings changed");
 			one.producer->retryAt = 0;
@@ -1015,9 +1038,10 @@ void ir_server::Frame()
 	}
 	Listen();
 	s_Server.poll(NowMs());
-	for (FakePlayer &one : s_Players)
-		Move(one, gpGlobals->frametime);
-	for (FakePlayer &one : s_Players)
+	for (Player &one : s_Players)
+		if (one.fake)
+			Move(one, gpGlobals->frametime);
+	for (Player &one : s_Players)
 		Produce(one, gpGlobals->time);
 }
 
@@ -1033,6 +1057,32 @@ void ir_server::Disconnect(edict_t *player)
 			return;
 		}
 	}
+}
+
+void ir_server::PutInServer(edict_t *player)
+{
+	// Fake players of the server library are known before they are put in; those of other bots
+	// are not observed.
+	if (!player || FindEdict(player) || (player->v.flags & FL_FAKECLIENT))
+		return;
+	Player human;
+	human.edict = player;
+	human.fake = false;
+	human.producer = std::make_unique<Producer>();
+	s_Players.push_back(std::move(human));
+}
+
+void ir_server::Command(const edict_t *player, const usercmd_s *cmd)
+{
+	Player *one = FindEdict(player);
+	if (!one || one->fake || !cmd)
+		return;
+	// A human's control: the commands its client sends, each one in turn (hl-producer §11).
+	one->forwardMove = cmd->forwardmove;
+	one->sideMove = cmd->sidemove;
+	one->producer->buttons.update(hl::hlButtonsToIr(cmd->buttons));
+	if (hl::isGameplayImpulse(cmd->impulse))
+		one->producer->command.set(cmd->impulse);
 }
 
 void ir_server::PlayerMove(playermove_s *pmove, int server, void (*move)(playermove_s *, int))
