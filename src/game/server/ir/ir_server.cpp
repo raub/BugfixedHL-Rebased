@@ -69,6 +69,7 @@ namespace
 
 cvar_t ir_control_port = { "ir_control_port", "47702", FCVAR_SERVER };
 cvar_t ir_bot_name = { "ir_bot_name", "ir_bot", FCVAR_SERVER };
+cvar_t ir_bots = { "ir_bots", "0", FCVAR_SERVER };
 cvar_t ir_produce = { "ir_produce", "1", 0 };
 cvar_t ir_service = { "ir_service", "127.0.0.1:47700", 0 };
 cvar_t ir_record = { "ir_record", "0", 0 };
@@ -564,7 +565,10 @@ void EmitFrame(FakePlayer &one)
 	if (p.client.isOpen())
 		p.client.send(bytes);
 	if (p.writer.isOpen())
+	{
 		p.writer.write(bytes);
+		p.writer.flush(); // a server is usually stopped by ending its process
+	}
 }
 
 // The player's state after this server frame's move.
@@ -833,11 +837,12 @@ void InstallHooks()
 
 // --- Commands -------------------------------------------------------------------------------
 
-// `ir_bot_add [name]`: a fake player joins.
-void CommandAdd()
+// A fake player joins; without a name it is called by ir_bot_name and its number.
+void AddPlayer(std::string name)
 {
 	const int number = FreeNumber();
-	std::string name = CMD_ARGC() > 1 ? CMD_ARGV(1) : std::string(ir_bot_name.string) + std::to_string(number);
+	if (name.empty())
+		name = std::string(ir_bot_name.string) + std::to_string(number);
 	edict_t *edict = g_engfuncs.pfnCreateFakeClient(name.c_str());
 	if (FNullEnt(edict))
 	{
@@ -861,6 +866,12 @@ void CommandAdd()
 	ClientPutInServer(edict);
 	edict->v.flags |= FL_FAKECLIENT;
 	ALERT(at_console, "ir-bot: %s joined\n", name.c_str());
+}
+
+// `ir_bot_add [name]`
+void CommandAdd()
+{
+	AddPlayer(CMD_ARGC() > 1 ? CMD_ARGV(1) : "");
 }
 
 // `ir_bot_status`: the fake players, their sessions, and whether a control moves them.
@@ -970,6 +981,7 @@ void ir_server::Init()
 {
 	CVAR_REGISTER(&ir_control_port);
 	CVAR_REGISTER(&ir_bot_name);
+	CVAR_REGISTER(&ir_bots);
 	CVAR_REGISTER(&ir_produce);
 	CVAR_REGISTER(&ir_service);
 	CVAR_REGISTER(&ir_record);
@@ -985,6 +997,9 @@ void ir_server::Frame()
 {
 	if (s_LevelName != STRING(gpGlobals->mapname))
 		NewLevel();
+	// `ir_bots <n>`: fake players join, one a frame, until there are so many.
+	if (static_cast<int>(s_Players.size()) < static_cast<int>(ir_bots.value) && gpGlobals->time > 1.0f)
+		AddPlayer("");
 	if (s_Players.empty() && !s_Server.running())
 		return;
 	if (s_Settings != CurrentSettings())
