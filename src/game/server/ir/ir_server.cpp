@@ -81,6 +81,9 @@ cvar_t ir_record_dir = { "ir_record_dir", "", 0 };
 cvar_t ir_config = { "ir_config", "", 0 };
 cvar_t ir_game = { "ir_game", "hl", 0 };
 cvar_t ir_kills = { "ir_kills", "", 0 };
+// Whether the fake players switch to a weapon they pick up, as cl_autowepswitch of a client:
+// 0 never, 1 always (the game's default), 2 unless firing. Off, every switch is the bot's own.
+cvar_t ir_autoswitch = { "ir_autoswitch", "1", 0 };
 
 constexpr double RETRY_SECONDS = 5.0; // between attempts to open a session that failed
 
@@ -971,6 +974,10 @@ void AddPlayer(std::string name)
 	added.session = static_cast<std::uint16_t>(number);
 	added.producer = std::make_unique<Producer>();
 	s_Players.push_back(std::move(added));
+	// The game reads the preference from the player's settings (SetPrefsFromUserinfo) whenever
+	// they change, and sets it to 1 as the player is put in the server: both are given.
+	const std::string autoswitch = std::to_string(static_cast<int>(ir_autoswitch.value));
+	g_engfuncs.pfnSetClientKeyValue(ENTINDEX(edict), g_engfuncs.pfnGetInfoKeyBuffer(edict), "cl_autowepswitch", autoswitch.c_str());
 	char reject[128] = {};
 	if (!ClientConnect(edict, name.c_str(), "127.0.0.1", reject))
 	{
@@ -980,6 +987,8 @@ void AddPlayer(std::string name)
 	}
 	ClientPutInServer(edict);
 	edict->v.flags |= FL_FAKECLIENT;
+	if (CBasePlayer *player = GetClassPtr(reinterpret_cast<CBasePlayer *>(&edict->v)))
+		player->m_iAutoWepSwitch = static_cast<int>(ir_autoswitch.value);
 	ALERT(at_console, "ir-bot: %s joined\n", name.c_str());
 }
 
@@ -1106,6 +1115,7 @@ void ir_server::Init()
 	CVAR_REGISTER(&ir_config);
 	CVAR_REGISTER(&ir_game);
 	CVAR_REGISTER(&ir_kills);
+	CVAR_REGISTER(&ir_autoswitch);
 	g_engfuncs.pfnAddServerCommand("ir_bot_add", CommandAdd);
 	g_engfuncs.pfnAddServerCommand("ir_bot_status", CommandStatus);
 	InstallHooks();
